@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rigging Calculator Phase 2</title>
+  <title>Rigging Calculator Phase 2.3</title>
   <style>
     :root {
       --bg: #0b0f16;
@@ -20,12 +20,24 @@
       --sel: #ffb347;
       --shadow: 0 18px 40px rgba(0,0,0,.3);
       --radius: 14px;
+      --dockH: 340px;
+      --sidebarW: 300px;
+      --rightbarW: 360px;
+      --divider: 10px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, Segoe UI, Arial, sans-serif; }
     body { overflow: hidden; }
-    .app { display: grid; grid-template-columns: 360px 1fr 390px; gap: 12px; height: 100vh; padding: 12px; }
+    .app { display: grid; grid-template-columns: var(--sidebarW) var(--divider) minmax(0,1fr) var(--divider) var(--rightbarW); gap: 12px; height: 100vh; padding: 12px; }
     .column { min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .main-column { min-height: 0; display: grid; grid-template-rows: minmax(380px, 1fr) var(--divider) var(--dockH); gap: 12px; }
+    .right-column { min-height: 0; display: grid; grid-template-rows: 1fr; }
+    .right-panel { display:grid; grid-template-rows: 46px 1fr; overflow:hidden; }
+    .input-panel { overflow:hidden; display:grid; grid-template-rows: 46px 1fr; }
+    .input-scroll { padding:14px; overflow:auto; min-height:0; }
+    .group-header { padding:10px 12px; background:rgba(102,166,255,.08); border-bottom:1px solid rgba(36,49,71,.7); font-weight:700; }
+    .tree-children .tree-row { padding-left:22px; }
+    .tree-toolbar { padding:12px; border-bottom:1px solid var(--line); display:grid; gap:10px; }
     .panel { background: linear-gradient(180deg, var(--panel), var(--panel2)); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); min-height: 0; }
     .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
     .panel-body { padding: 14px; }
@@ -52,6 +64,36 @@
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .splitter {
+      position: relative;
+      min-height: 0;
+      min-width: 0;
+      border-radius: 999px;
+      border: 1px solid var(--line2);
+      background: linear-gradient(180deg, #132032, #0f1724);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.02), var(--shadow);
+      user-select: none;
+      touch-action: none;
+      opacity: .95;
+      transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+    }
+    .splitter:hover, .splitter.dragging {
+      background: linear-gradient(180deg, #1a2a42, #152133);
+      border-color: var(--accent);
+      opacity: 1;
+    }
+    .splitter.vertical { cursor: col-resize; }
+    .splitter.horizontal { cursor: row-resize; }
+    .splitter::after {
+      content: "";
+      position: absolute;
+      inset: 50% auto auto 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 999px;
+      background: rgba(149,164,191,.55);
+    }
+    .splitter.vertical::after { width: 3px; height: 42px; box-shadow: -4px 0 0 rgba(149,164,191,.35), 4px 0 0 rgba(149,164,191,.35); }
+    .splitter.horizontal::after { width: 42px; height: 3px; box-shadow: 0 -4px 0 rgba(149,164,191,.35), 0 4px 0 rgba(149,164,191,.35); }
     .viewport-panel { display: grid; grid-template-rows: 46px 1fr; overflow: hidden; }
     .viewport-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line); }
     #viewport { position: relative; min-height: 0; }
@@ -60,6 +102,7 @@
     .overlay-top .chip { background: rgba(11,15,22,.85); border: 1px solid var(--line2); border-radius: 999px; padding: 6px 10px; color: var(--text); }
     .view-helper { position: absolute; top: 12px; right: 12px; display: grid; grid-template-columns: repeat(2, auto); gap: 8px; z-index: 10; }
     .view-helper button { min-width: 64px; }
+    
     .tree { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0e1520; }
     .tree-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgba(36,49,71,.7); cursor: pointer; }
     .tree-row:last-child { border-bottom: none; }
@@ -76,160 +119,239 @@
     .section { padding: 10px 0 0; border-top: 1px solid rgba(49,65,94,.45); }
     .checkline { display: flex; align-items: center; gap: 8px; }
     .checkline input { width: auto; min-height: auto; }
-    @media (max-width: 1500px) { .app { grid-template-columns: 330px 1fr 360px; } }
-    @media (max-width: 1200px) { body { overflow: auto; } .app { grid-template-columns: 1fr; height: auto; } .viewport-panel { min-height: 640px; } }
+    .summary-card { margin: 12px; padding: 12px; border: 1px dashed var(--line2); border-radius: 12px; background: rgba(102,166,255,.04); }
+    @media (max-width: 1300px) { body { overflow: auto; } .app { display: flex; flex-direction: column; height: auto; } .main-column { display: flex; flex-direction: column; } .splitter { display: none; } .viewport-panel { min-height: 480px; } .input-panel, .right-panel { min-height: 380px; } }
   </style>
 </head>
 <body>
   <div class="app">
-    <section class="column">
-      <div class="panel">
+    <section class="column left-column">
+      <div class="panel" style="display:grid; grid-template-rows:auto 1fr; overflow:hidden;">
         <div class="panel-header">
           <div>
             <h1 class="title">Rigging Calculator</h1>
-            <div class="muted small">Phase 2 prototype: arbitrary nodal solver, CAD-style drawing, custom rigging items.</div>
+            <div class="muted small">Phase 2.3 prototype: resizable UI, grouped tree, save/load, examples, common end-point tools.</div>
           </div>
         </div>
-        <div class="panel-body stack">
-          <div class="badge ok">Freeform nodal equilibrium: enabled</div>
-          <div class="badge ok">Custom slings / shackles / master links: enabled</div>
-          <div class="badge warn">Inventor-style constraints: prototype level</div>
-          <div class="notice">This version solves arbitrary <strong>axial pin-jointed arrangements</strong> from supports, nodal loads and load boxes. It also adds workplane drawing, snapping, basic inferencing, simple sketch aids, representative beam and load geometry, and custom rigging libraries. It is <strong>not yet</strong> a full rigid-body spreader-beam / shackle-side-load / CAD-constraint engine.</div>
+        <div class="tree-toolbar scroll">
+          <div class="badge ok">Results + properties docked on the right</div>
+          <div class="badge ok">Drawing tree + groups on the left</div>
+          <div class="badge warn">Input data + examples + save/load docked below</div>
+          <div class="notice">Tree groups/blocks are prototype-level containers for rigging parts. Save files preserve nodes, members, beams, load boxes, groups, construction lines, examples and custom library items.</div>
+          <div class="stack section">
+            <strong>Tree groups / blocks</strong>
+            <label>Group name
+              <input id="group-name" type="text" value="Rigging Group 1" />
+            </label>
+            <label>Item refs (optional)
+              <input id="group-item-ids" type="text" placeholder="N1, M1, B1, L1, C1" />
+            </label>
+            <div class="toolbar">
+              <button id="btn-create-group">Create group / block</button>
+              <button id="btn-add-selected-group">Add selected</button>
+            </div>
+            <div class="mini">Type IDs directly or add the current selection to a group. Groups are reflected in the tree below.</div>
+          </div>
         </div>
-      </div>
-
-      <div class="panel scroll">
-        <div class="panel-header"><strong>Project + Tools</strong></div>
-        <div class="panel-body stack-lg">
-          <div class="stack">
-            <label>Project name
-              <input id="project-name" type="text" value="Custom rigging arrangement" />
-            </label>
-            <div class="three">
-              <label>Load factor mass (t)
-                <input id="load-mass-factor" type="number" value="50" step="0.01" />
-              </label>
-              <label>Dynamic factor
-                <input id="dynamic-factor" type="number" value="1.00" step="0.01" />
-              </label>
-              <label>Consequence factor
-                <input id="consequence-factor" type="number" value="1.00" step="0.01" />
-              </label>
-            </div>
-          </div>
-
-          <div class="stack">
-            <strong>Drawing tools</strong>
-            <div class="toolbar">
-              <button data-tool="select" class="tool-btn active">Select</button>
-              <button data-tool="draw-node" class="tool-btn">Draw node</button>
-              <button data-tool="draw-member" class="tool-btn">Draw member</button>
-              <button data-tool="draw-beam" class="tool-btn">Draw beam</button>
-              <button data-tool="draw-loadbox" class="tool-btn">Draw load box</button>
-              <button data-tool="delete" class="tool-btn">Delete</button>
-            </div>
-            <div class="toolbar">
-              <button id="btn-load-demo">Load demo sling lift</button>
-              <button id="btn-clear">Clear drawing</button>
-              <button id="btn-fit">Fit view</button>
-              <button id="btn-constraints">Apply sketch aids</button>
-            </div>
-          </div>
-
-          <div class="stack">
-            <strong>Workplane + sketch aids</strong>
-            <div class="toolbar">
-              <button data-plane="XY" class="plane-btn">XY</button>
-              <button data-plane="XZ" class="plane-btn active">XZ</button>
-              <button data-plane="YZ" class="plane-btn">YZ</button>
-            </div>
-            <div class="two">
-              <label>Plane offset (m)
-                <input id="plane-offset" type="number" value="0" step="0.1" />
-              </label>
-              <label>Grid snap (m)
-                <input id="grid-snap" type="number" value="0.25" step="0.05" min="0" />
-              </label>
-            </div>
-            <div class="three">
-              <label class="checkline"><input id="snap-nodes" type="checkbox" checked />Node snap</label>
-              <label class="checkline"><input id="snap-midpoints" type="checkbox" checked />Midpoint snap</label>
-              <label class="checkline"><input id="axis-inference" type="checkbox" checked />Axis inference</label>
-            </div>
-            <label>Default member type
-              <select id="default-member-type">
-                <option value="sling">sling</option>
-                <option value="chain_leg">chain_leg</option>
-                <option value="wire_rope_leg">wire_rope_leg</option>
-                <option value="beam_tie">beam_tie</option>
-                <option value="rigid_link">rigid_link</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="stack section">
-            <strong>Custom rigging library</strong>
-            <div class="three">
-              <label>Type
-                <select id="new-item-type">
-                  <option value="sling">sling</option>
-                  <option value="chain_leg">chain_leg</option>
-                  <option value="wire_rope_leg">wire_rope_leg</option>
-                  <option value="shackle">shackle</option>
-                  <option value="master_link">master_link</option>
-                  <option value="beam">beam</option>
-                </select>
-              </label>
-              <label>Label
-                <input id="new-item-label" type="text" value="Custom sling" />
-              </label>
-              <label>WLL (kN)
-                <input id="new-item-wll" type="number" value="100" step="0.1" min="0" />
-              </label>
-            </div>
-            <button id="btn-add-item">Add custom item</button>
-            <div id="library-summary" class="mini"></div>
-          </div>
-
-          <div class="stack section">
+        <div class="panel-body scroll" style="padding-top:0;">
+          <div class="summary-card">
             <strong>Drawing tree</strong>
-            <div id="drawing-tree" class="tree"></div>
+            <div class="mini" style="margin-top:4px;">Ungrouped items stay visible at the bottom. Construction lines and grouped rigging assemblies appear here too.</div>
           </div>
+          <div id="drawing-tree" class="tree"></div>
         </div>
       </div>
     </section>
 
-    <section class="column">
+    <div id="splitter-sidebar" class="splitter vertical" title="Drag to resize left tree" aria-label="Resize left tree" role="separator"></div>
+
+    <section class="main-column">
       <div class="panel viewport-panel">
         <div class="viewport-toolbar">
           <div id="viewport-status">Ready</div>
-          <div class="muted small">Left click uses active tool · Right drag orbits · Middle drag pans · Wheel zooms · Shift strengthens axis locking</div>
+          <div class="muted small">Left click uses active tool · Right drag orbits · Middle drag pans · Wheel zooms · Sketch labels can show lengths and sling angles in the 3D view</div>
         </div>
         <div id="viewport">
           <div class="overlay-top">
             <div class="chip" id="chip-tool">Tool: select</div>
-            <div class="chip" id="chip-plane">Plane: XZ @ 0.00</div>
+            <div class="chip" id="chip-plane">Plane: XZ @ 0.000</div>
             <div class="chip" id="chip-selection">Selection: none</div>
             <div class="chip" id="chip-snap">Snap: grid+node+midpoint</div>
           </div>
         </div>
       </div>
+
+      <div id="splitter-dock" class="splitter horizontal" title="Drag to resize lower input dock" aria-label="Resize lower input dock" role="separator"></div>
+
+      <div class="panel input-panel">
+        <div class="panel-header">
+          <strong>Input data + examples + save/load</strong>
+          <div class="mini">1 unit = 1 metre · input precision = 0.001 m (1 mm)</div>
+        </div>
+        <div class="input-scroll">
+          <div class="stack-lg">
+            <div class="stack">
+              <div class="two">
+                <label>Project name
+                  <input id="project-name" type="text" value="Custom rigging arrangement" />
+                </label>
+                <label>Example arrangement
+                  <select id="example-select">
+                    <option value="demo2leg">2-leg top lift to two lugs</option>
+                    <option value="fourleg">4-leg bridle to 4-corner load</option>
+                    <option value="spreader">Hook to spreader beam to two bottom slings</option>
+                    <option value="basket">2-leg basket style representative arrangement</option>
+                    <option value="tailing">Tailing / turning representative arrangement</option>
+                    <option value="threeleg">3-leg bridle representative arrangement</option>
+                  </select>
+                </label>
+              </div>
+              <div class="four">
+                <label>Load factor mass (t)
+                  <input id="load-mass-factor" type="number" value="50" step="0.001" />
+                </label>
+                <label>Dynamic factor
+                  <input id="dynamic-factor" type="number" value="1.000" step="0.001" />
+                </label>
+                <label>Consequence factor
+                  <input id="consequence-factor" type="number" value="1.000" step="0.001" />
+                </label>
+                <label>Grid snap (m)
+                  <input id="grid-snap" type="number" value="0.250" step="0.001" min="0" />
+                </label>
+              </div>
+              <div class="toolbar">
+                <button id="btn-load-example">Load selected example</button>
+                <button id="btn-load-demo">Load demo sling lift</button>
+                <button id="btn-clear">Clear drawing</button>
+                <button id="btn-fit">Fit view</button>
+              </div>
+            </div>
+
+            <div class="stack section">
+              <strong>Drawing tools</strong>
+              <div class="toolbar">
+                <button data-tool="select" class="tool-btn active">Select</button>
+                <button data-tool="draw-node" class="tool-btn">Draw node</button>
+                <button data-tool="draw-member" class="tool-btn">Draw member</button>
+                <button data-tool="draw-beam" class="tool-btn">Draw beam</button>
+                <button data-tool="draw-loadbox" class="tool-btn">Draw load box</button>
+                <button data-tool="delete" class="tool-btn">Delete</button>
+              </div>
+              <div class="toolbar">
+                <button id="btn-constraints">Apply sketch aids</button>
+                <label class="checkline"><input id="show-sketch-annotations" type="checkbox" checked />Show sketch labels</label>
+                <label class="checkline"><input id="snap-nodes" type="checkbox" checked />Node snap</label>
+                <label class="checkline"><input id="snap-midpoints" type="checkbox" checked />Midpoint snap</label>
+                <label class="checkline"><input id="axis-inference" type="checkbox" checked />Axis inference</label>
+              </div>
+              <div class="four">
+                <div class="toolbar" style="grid-column: span 1;">
+                  <button data-plane="XY" class="plane-btn">XY</button>
+                  <button data-plane="XZ" class="plane-btn active">XZ</button>
+                  <button data-plane="YZ" class="plane-btn">YZ</button>
+                </div>
+                <label>Plane offset (m)
+                  <input id="plane-offset" type="number" value="0.000" step="0.001" />
+                </label>
+                <label>Default member type
+                  <select id="default-member-type">
+                    <option value="sling">sling</option>
+                    <option value="chain_leg">chain_leg</option>
+                    <option value="wire_rope_leg">wire_rope_leg</option>
+                    <option value="beam_tie">beam_tie</option>
+                    <option value="rigid_link">rigid_link</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="stack section">
+              <strong>Save / load</strong>
+              <div class="toolbar">
+                <button id="btn-save-json">Save arrangement</button>
+                <button id="btn-load-json">Load arrangement</button>
+                <input id="load-json-file" type="file" accept="application/json" class="hidden" />
+              </div>
+              <div class="mini">Saves the current rigging model as JSON and loads it back later, including custom items, groups and construction lines.</div>
+            </div>
+
+            <div class="stack section">
+              <strong>Construction lines + common end-point tools</strong>
+              <div class="three">
+                <label>Construction node A
+                  <input id="construction-node-a" type="text" placeholder="N1" />
+                </label>
+                <label>Construction node B
+                  <input id="construction-node-b" type="text" placeholder="N2" />
+                </label>
+                <div class="toolbar" style="align-self:end;"><button id="btn-create-construction">Create construction line</button></div>
+              </div>
+              <div class="three">
+                <label>Start node IDs (comma separated)
+                  <input id="meeting-node-ids" type="text" value="N2, N3" />
+                </label>
+                <label>Common member length (m)
+                  <input id="meeting-length" type="number" value="5.000" step="0.001" min="0" />
+                </label>
+                <label>Construction line (optional)
+                  <select id="construction-line-select"><option value="">none</option></select>
+                </label>
+              </div>
+              <div class="toolbar">
+                <label class="checkline"><input id="meeting-create-node" type="checkbox" checked />Create solved node</label>
+                <button id="btn-meeting-attachments">Use attachment nodes</button>
+                <button id="btn-meeting-loadbox">Use selected load box</button>
+                <button id="btn-solve-meeting">Find common end point</button>
+                <button id="btn-solve-line-meeting">Find on construction line</button>
+              </div>
+              <div id="meeting-summary" class="mini">For 2 nodes on the active workplane, the solver now shows the two geometric solutions. For 3 coplanar nodes, mirrored solutions are reported where applicable.</div>
+            </div>
+
+            <div class="stack section">
+              <strong>Custom rigging library</strong>
+              <div class="three">
+                <label>Type
+                  <select id="new-item-type">
+                    <option value="sling">sling</option>
+                    <option value="chain_leg">chain_leg</option>
+                    <option value="wire_rope_leg">wire_rope_leg</option>
+                    <option value="shackle">shackle</option>
+                    <option value="master_link">master_link</option>
+                    <option value="beam">beam</option>
+                  </select>
+                </label>
+                <label>Label
+                  <input id="new-item-label" type="text" value="Custom sling" />
+                </label>
+                <label>WLL (kN)
+                  <input id="new-item-wll" type="number" value="100.0" step="0.1" min="0" />
+                </label>
+              </div>
+              <div class="toolbar"><button id="btn-add-item">Add custom item</button></div>
+              <div id="library-summary" class="mini"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="column">
-      <div class="panel" style="display:grid; grid-template-rows:auto 1fr; min-height:0;">
+    <div id="splitter-right" class="splitter vertical" title="Drag to resize right results panel" aria-label="Resize right results panel" role="separator"></div>
+
+    <section class="right-column">
+      <div class="panel right-panel">
         <div class="panel-header">
-          <div class="tabs">
+          <div class="tabs" style="min-width:320px; max-width:460px; width:100%;">
             <button id="tab-properties" class="active">Properties</button>
             <button id="tab-results">Results</button>
           </div>
+          <div class="mini">Selection, dimensions, member ends and solver output</div>
         </div>
         <div id="properties-panel" class="panel-body scroll"></div>
         <div id="results-panel" class="panel-body scroll hidden"></div>
       </div>
     </section>
   </div>
-
   <script>
   (() => {
     const state = {
@@ -249,12 +371,16 @@
       members: [],
       beams: [],
       loadBoxes: [],
+      constructionLines: [],
+      groups: [],
       selection: null,
       pendingStart: null,
       counters: { node: 1, member: 1, beam: 1, loadBox: 1, item: 1 },
       analysis: null,
       library: {},
-      preview: null
+      preview: null,
+      meetingSolution: null,
+      showSketchAnnotations: true
     };
 
     const el = {
@@ -282,26 +408,53 @@
       newItemType: document.getElementById('new-item-type'),
       newItemLabel: document.getElementById('new-item-label'),
       newItemWll: document.getElementById('new-item-wll'),
-      librarySummary: document.getElementById('library-summary')
+      librarySummary: document.getElementById('library-summary'),
+      meetingNodeIds: document.getElementById('meeting-node-ids'),
+      meetingLength: document.getElementById('meeting-length'),
+      meetingCreateNode: document.getElementById('meeting-create-node'),
+      meetingSummary: document.getElementById('meeting-summary'),
+      showSketchAnnotations: document.getElementById('show-sketch-annotations'),
+      exampleSelect: document.getElementById('example-select'),
+      constructionNodeA: document.getElementById('construction-node-a'),
+      constructionNodeB: document.getElementById('construction-node-b'),
+      constructionLineSelect: document.getElementById('construction-line-select'),
+      groupName: document.getElementById('group-name'),
+      groupItemIds: document.getElementById('group-item-ids'),
+      loadJsonFile: document.getElementById('load-json-file')
     };
 
+    
     function seedLibrary() {
-      const add = (id, item_type, label, wll_kN, extra = {}) => ({ id, item_type, label, wll_kN, ...extra });
-      return {
-        'wh-hack8-10mm': add('wh-hack8-10mm', 'chain_leg', 'Hack8 10 mm chain sling leg', 3.15 * 9.80665),
-        'wh-hack8-16mm': add('wh-hack8-16mm', 'chain_leg', 'Hack8 16 mm chain sling leg', 8.0 * 9.80665),
-        'wh-hack8-20mm': add('wh-hack8-20mm', 'chain_leg', 'Hack8 20 mm chain sling leg', 12.5 * 9.80665),
-        'spanset-rs2000-2m': add('spanset-rs2000-2m', 'sling', 'SpanSet roundsling 2.0 t', 2.0 * 9.80665),
-        'spanset-rs3000-2m': add('spanset-rs3000-2m', 'sling', 'SpanSet roundsling 3.0 t', 3.0 * 9.80665),
-        'spanset-rs5000-2m': add('spanset-rs5000-2m', 'sling', 'SpanSet roundsling 5.0 t', 5.0 * 9.80665),
-        'greenpin-g4163-3p25t': add('greenpin-g4163-3p25t', 'shackle', 'Green Pin bow shackle 3.25 t', 3.25 * 9.80665),
-        'greenpin-g4163-4p75t': add('greenpin-g4163-4p75t', 'shackle', 'Green Pin bow shackle 4.75 t', 4.75 * 9.80665),
-        'greenpin-g4163-6p5t': add('greenpin-g4163-6p5t', 'shackle', 'Green Pin bow shackle 6.5 t', 6.5 * 9.80665),
-        'masterlink-10t': add('masterlink-10t', 'master_link', 'Master link 10 t', 10 * 9.80665),
-        'masterlink-17t': add('masterlink-17t', 'master_link', 'Master link 17 t', 17 * 9.80665),
-        'masterlink-26t': add('masterlink-26t', 'master_link', 'Master link 26 t', 26 * 9.80665),
-        'beam-500kN': add('beam-500kN', 'beam', 'Representative beam 500 kN', 500)
-      };
+      const lib = {};
+      const t2kN = t => t * 9.80665;
+      const capsT = [0.5, 1, 2, 3.25, 4.75, 6.5, 8, 10, 13, 17, 25, 35, 50, 75, 100, 150, 200, 300, 400, 600, 800, 1000];
+      const makeId = (prefix, t) => `${prefix}-${String(t).replace(/\./g,'p')}t`;
+      const add = (id, item_type, label, wll_kN, extra = {}) => { lib[id] = { id, item_type, label, wll_kN, ...extra }; };
+
+      // Representative generic library spanning roughly 0.5 t to 1000 t.
+      // These are configurable placeholders for planning / prototyping in this phase,
+      // not manufacturer-certified catalogue rows.
+      for (const t of capsT) {
+        add(makeId('generic-roundsling', t), 'sling', `Generic roundsling ${t} t`, t2kN(t));
+        add(makeId('generic-chain-leg', t), 'chain_leg', `Generic chain sling leg ${t} t`, t2kN(t));
+        add(makeId('generic-wire-rope', t), 'wire_rope_leg', `Generic wire rope sling ${t} t`, t2kN(t));
+        add(makeId('generic-shackle', t), 'shackle', `Generic shackle ${t} t`, t2kN(t));
+        add(makeId('generic-master-link', t), 'master_link', `Generic master link ${t} t`, t2kN(t));
+        add(makeId('generic-beam', t), 'beam', `Generic representative beam ${t} t`, t2kN(t));
+      }
+
+      // Keep a few named starter items too.
+      add('wh-hack8-10mm', 'chain_leg', 'Hack8 10 mm chain sling leg', 3.15 * 9.80665);
+      add('wh-hack8-16mm', 'chain_leg', 'Hack8 16 mm chain sling leg', 8.0 * 9.80665);
+      add('wh-hack8-20mm', 'chain_leg', 'Hack8 20 mm chain sling leg', 12.5 * 9.80665);
+      add('spanset-rs2000-2m', 'sling', 'SpanSet roundsling 2.0 t', 2.0 * 9.80665);
+      add('spanset-rs3000-2m', 'sling', 'SpanSet roundsling 3.0 t', 3.0 * 9.80665);
+      add('spanset-rs5000-2m', 'sling', 'SpanSet roundsling 5.0 t', 5.0 * 9.80665);
+      add('greenpin-g4163-3p25t', 'shackle', 'Green Pin bow shackle 3.25 t', 3.25 * 9.80665);
+      add('greenpin-g4163-4p75t', 'shackle', 'Green Pin bow shackle 4.75 t', 4.75 * 9.80665);
+      add('greenpin-g4163-6p5t', 'shackle', 'Green Pin bow shackle 6.5 t', 6.5 * 9.80665);
+      add('masterlink-17t', 'master_link', 'Master link 17 t', 17 * 9.80665);
+      return lib;
     }
     state.library = seedLibrary();
 
@@ -487,6 +640,7 @@
     function nodeColour(role) {
       if (role === 'support' || role === 'hook') return '#2cb67d';
       if (role === 'attachment') return '#d6a13f';
+      if (role === 'meeting') return '#8de8ff';
       return '#4e84d1';
     }
 
@@ -502,6 +656,18 @@
       for (const [i,j] of edges) drawWorldLine(corners[i], corners[j], selected ? '#ffb347' : '#5ea0ff', selected ? 2.2 : 1.4, []);
       const c = projectPoint(v(box.cx, box.cy, box.cz));
       if (c) text2D(box.name || box.id, c, selected ? '#ffb347' : '#95a4bf');
+    }
+
+    function renderConstructionLine(line, selected) {
+      const a = getNodeById(line.nodeA), b = getNodeById(line.nodeB);
+      if (!a || !b) return;
+      const d = norm(sub(b,a));
+      const ext = 200;
+      const p1 = add(a, mul(d, -ext));
+      const p2 = add(a, mul(d, ext));
+      drawWorldLine(p1, p2, selected ? '#ffb347' : '#8de8ff', selected ? 2 : 1.2, [8,5]);
+      const mid = projectPoint(v((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2));
+      if (mid) text2D(line.name || line.id, mid, selected ? '#ffb347' : '#8de8ff');
     }
 
     function renderBeam(beam, selected) {
@@ -533,6 +699,12 @@
       text2D(member.name || member.id, mid, '#95a4bf');
       if (member.startHardwareId) diamond2D(a, selected ? 7 : 5, '#d6a13f', '#0b0f16', 1.2);
       if (member.endHardwareId) diamond2D(b, selected ? 7 : 5, '#d6a13f', '#0b0f16', 1.2);
+      if (state.showSketchAnnotations) {
+        const L = len(sub(b3,a3));
+        const dz = Math.abs((b3.z||0) - (a3.z||0));
+        const angleV = L > 1e-9 ? Math.acos(Math.min(1, dz / L)) * 180 / Math.PI : 0;
+        text2D(`${L.toFixed(3)} m · ${angleV.toFixed(1)}° to V`, {x:mid.x+4, y:mid.y+16}, '#8de8ff');
+      }
     }
 
     function renderNode(node, selected) {
@@ -554,6 +726,27 @@
       }
     }
 
+    function renderMeetingSolution() {
+      if (!state.meetingSolution) return;
+      const pts = [];
+      if (state.meetingSolution.point) pts.push({ p: state.meetingSolution.point, label: 'Common point A' });
+      if (state.meetingSolution.alternatePoint) pts.push({ p: state.meetingSolution.alternatePoint, label: 'Common point B' });
+      if (state.meetingSolution.linePoint) pts.push({ p: state.meetingSolution.linePoint, label: 'Line point' });
+      pts.forEach(item => {
+        const p = projectPoint(item.p);
+        if (!p) return;
+        ctx.save();
+        ctx.strokeStyle = '#8de8ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x - 9, p.y); ctx.lineTo(p.x + 9, p.y);
+        ctx.moveTo(p.x, p.y - 9); ctx.lineTo(p.x, p.y + 9);
+        ctx.stroke();
+        ctx.restore();
+        text2D(item.label, p, '#8de8ff');
+      });
+    }
+
     function render() {
       const rect = el.viewport.getBoundingClientRect();
       ctx.clearRect(0,0,rect.width,rect.height);
@@ -561,15 +754,17 @@
       drawAxes();
 
       for (const box of state.loadBoxes) renderLoadBox(box, state.selection && state.selection.kind === 'loadBox' && state.selection.id === box.id);
+      for (const line of state.constructionLines) renderConstructionLine(line, state.selection && state.selection.kind === 'constructionLine' && state.selection.id === line.id);
       for (const beam of state.beams) renderBeam(beam, state.selection && state.selection.kind === 'beam' && state.selection.id === beam.id);
       for (const member of state.members) renderMember(member, state.selection && state.selection.kind === 'member' && state.selection.id === member.id);
       for (const node of state.nodes) renderNode(node, state.selection && state.selection.kind === 'node' && state.selection.id === node.id);
       renderPreview();
+      renderMeetingSolution();
     }
 
     function updateChips() {
       el.chipTool.textContent = 'Tool: ' + state.tool;
-      el.chipPlane.textContent = `Plane: ${state.activePlane} @ ${Number(state.planeOffset).toFixed(2)}`;
+      el.chipPlane.textContent = `Plane: ${state.activePlane} @ ${Number(state.planeOffset).toFixed(3)}`;
       el.chipSelection.textContent = 'Selection: ' + (state.selection ? `${state.selection.kind} ${state.selection.id}` : 'none');
       const bits = ['grid'];
       if (state.snapNodes) bits.push('node');
@@ -600,6 +795,29 @@
     function getMemberById(id){ return state.members.find(m => m.id === id); }
     function getBeamById(id){ return state.beams.find(b => b.id === id); }
     function getLoadBoxById(id){ return state.loadBoxes.find(b => b.id === id); }
+    function getConstructionLineById(id){ return state.constructionLines.find(c => c.id === id); }
+    function nextConstructionLineId(){ return 'C' + (state.constructionLines.length + 1); }
+    function nextGroupId(){ return 'G' + (state.groups.length + 1); }
+    function entityExists(kind, id){
+      if (kind === 'node') return !!getNodeById(id);
+      if (kind === 'member') return !!getMemberById(id);
+      if (kind === 'beam') return !!getBeamById(id);
+      if (kind === 'loadBox') return !!getLoadBoxById(id);
+      if (kind === 'constructionLine') return !!getConstructionLineById(id);
+      return false;
+    }
+    function inferEntityRef(token){
+      const t = String(token || '').trim(); if (!t) return null;
+      const m = t.match(/^(node|member|beam|loadBox|constructionLine)\s*:\s*(.+)$/i);
+      if (m) {
+        const kindMap = {node:'node',member:'member',beam:'beam',loadbox:'loadBox',constructionline:'constructionLine'};
+        const kind = kindMap[m[1].toLowerCase()]; const id = m[2].trim();
+        return entityExists(kind,id) ? {kind,id} : null;
+      }
+      for (const kind of ['node','member','beam','loadBox','constructionLine']) if (entityExists(kind,t)) return {kind,id:t};
+      return null;
+    }
+    function itemRefsForCurrentSelection(){ return state.selection ? [`${state.selection.id}`] : []; }
     function nextNodeId(){ return 'N' + state.counters.node++; }
     function nextMemberId(){ return 'M' + state.counters.member++; }
     function nextBeamId(){ return 'B' + state.counters.beam++; }
@@ -687,6 +905,14 @@
         const d = pointSegmentDistance(px, py, pa.x, pa.y, pb.x, pb.y);
         if (d <= 7) hits.push({ kind:'member', id:m.id, score:d + 20 });
       }
+      for (const cl of state.constructionLines) {
+        const a=getNodeById(cl.nodeA), c=getNodeById(cl.nodeB);
+        if (!a || !c) continue;
+        const pa = a && projectPoint(a), pb = c && projectPoint(c);
+        if (!pa || !pb) continue;
+        const d = pointSegmentDistance(px, py, pa.x, pa.y, pb.x, pb.y);
+        if (d <= 10) hits.push({ kind:'constructionLine', id:cl.id, score:d + 22 });
+      }
       for (const b of state.beams) {
         const a = getNodeById(b.nodeA), c = getNodeById(b.nodeB);
         const pa = a && projectPoint(a), pb = c && projectPoint(c);
@@ -715,21 +941,41 @@
     }
 
     function rebuildTree() {
-      const rows = [];
-      for (const n of state.nodes) rows.push({ kind:'node', id:n.id, name:n.name||n.id, meta:`${n.role} (${round2(n.x)}, ${round2(n.y)}, ${round2(n.z)})` });
-      for (const m of state.members) rows.push({ kind:'member', id:m.id, name:m.name||m.id, meta:`${m.type}: ${m.nodeA} → ${m.nodeB}` });
-      for (const b of state.beams) rows.push({ kind:'beam', id:b.id, name:b.name||b.id, meta:`beam geom: ${b.nodeA} → ${b.nodeB}` });
-      for (const lb of state.loadBoxes) rows.push({ kind:'loadBox', id:lb.id, name:lb.name||lb.id, meta:`load box ${lb.massT} t` });
-      if (!rows.length) {
+      const groupsByItem = new Map();
+      state.groups.forEach(g => (g.items || []).forEach(ref => groupsByItem.set(`${ref.kind}:${ref.id}`, g.id)));
+      const allRows = [];
+      for (const n of state.nodes) allRows.push({ kind:'node', id:n.id, name:n.name||n.id, meta:`${n.role} (${n.x.toFixed(3)}, ${n.y.toFixed(3)}, ${n.z.toFixed(3)})` });
+      for (const m of state.members) allRows.push({ kind:'member', id:m.id, name:m.name||m.id, meta:`${m.type}: ${m.nodeA} → ${m.nodeB}` });
+      for (const b of state.beams) allRows.push({ kind:'beam', id:b.id, name:b.name||b.id, meta:`beam geom: ${b.nodeA} → ${b.nodeB}` });
+      for (const lb of state.loadBoxes) allRows.push({ kind:'loadBox', id:lb.id, name:lb.name||lb.id, meta:`load box ${lb.massT} t` });
+      for (const c of state.constructionLines) allRows.push({ kind:'constructionLine', id:c.id, name:c.name||c.id, meta:`construction line: ${c.nodeA} ↔ ${c.nodeB}` });
+      if (!allRows.length && !state.groups.length) {
         el.tree.innerHTML = '<div class="tree-row"><div>No entities yet</div><div class="meta">Draw on a workplane</div></div>';
+        updateConstructionLineSelect();
         return;
       }
-      el.tree.innerHTML = rows.map(r => `
-        <div class="tree-row ${state.selection && state.selection.kind===r.kind && state.selection.id===r.id ? 'active':''}" data-kind="${r.kind}" data-id="${r.id}">
-          <div><div>${r.name}</div><div class="meta">${r.meta}</div></div>
-          <div class="meta">${r.kind}</div>
-        </div>`).join('');
-      el.tree.querySelectorAll('.tree-row').forEach(row => row.addEventListener('click', () => selectItem(row.dataset.kind, row.dataset.id)));
+      const grouped = {};
+      state.groups.forEach(g => grouped[g.id] = []);
+      const ungrouped = [];
+      allRows.forEach(r => {
+        const gid = groupsByItem.get(`${r.kind}:${r.id}`);
+        if (gid && grouped[gid]) grouped[gid].push(r); else ungrouped.push(r);
+      });
+      let html = '';
+      state.groups.forEach(g => {
+        html += `<div class="group-header">${g.name} <span class="mini">(${(g.items||[]).length} item(s))</span></div><div class="tree-children">`;
+        const kids = grouped[g.id] || [];
+        html += kids.length ? kids.map(r => `<div class="tree-row ${state.selection && state.selection.kind===r.kind && state.selection.id===r.id ? 'active':''}" data-kind="${r.kind}" data-id="${r.id}"><div><div>${r.name}</div><div class="meta">${r.meta}</div></div><div class="meta">${r.kind}</div></div>`).join('') : `<div class="tree-row"><div><div class="meta">No valid grouped items yet</div></div><div class="meta">group</div></div>`;
+        html += `</div>`;
+      });
+      if (ungrouped.length) {
+        html += `<div class="group-header">Ungrouped</div><div class="tree-children">`;
+        html += ungrouped.map(r => `<div class="tree-row ${state.selection && state.selection.kind===r.kind && state.selection.id===r.id ? 'active':''}" data-kind="${r.kind}" data-id="${r.id}"><div><div>${r.name}</div><div class="meta">${r.meta}</div></div><div class="meta">${r.kind}</div></div>`).join('');
+        html += `</div>`;
+      }
+      el.tree.innerHTML = html;
+      el.tree.querySelectorAll('.tree-row[data-kind]').forEach(row => row.addEventListener('click', () => selectItem(row.dataset.kind, row.dataset.id)));
+      updateConstructionLineSelect();
     }
 
     function selectItem(kind,id) {
@@ -754,7 +1000,10 @@
         state.beams = state.beams.filter(b => b.id !== id);
       } else if (kind === 'loadBox') {
         state.loadBoxes = state.loadBoxes.filter(b => b.id !== id);
+      } else if (kind === 'constructionLine') {
+        state.constructionLines = state.constructionLines.filter(c => c.id !== id);
       }
+      state.groups.forEach(g => g.items = (g.items||[]).filter(ref => !(ref.kind===kind && ref.id===id)));
       state.selection = null;
       state.pendingStart = null;
       rebuildTree(); renderProperties(); render(); runAnalysis();
@@ -762,8 +1011,8 @@
     }
 
     function clearDrawing() {
-      state.nodes = []; state.members = []; state.beams = []; state.loadBoxes = [];
-      state.selection = null; state.pendingStart = null; state.preview = null;
+      state.nodes = []; state.members = []; state.beams = []; state.loadBoxes = []; state.constructionLines = []; state.groups = [];
+      state.selection = null; state.pendingStart = null; state.preview = null; state.meetingSolution = null;
       state.counters = { node: 1, member: 1, beam: 1, loadBox: 1, item: state.counters.item };
       rebuildTree(); renderProperties(); render(); runAnalysis();
       setStatus('Drawing cleared.');
@@ -779,6 +1028,9 @@
         pts.push(v(lb.cx-lb.sx/2, lb.cy-lb.sy/2, lb.cz-lb.sz/2));
         pts.push(v(lb.cx+lb.sx/2, lb.cy+lb.sy/2, lb.cz+lb.sz/2));
       }
+      if (state.meetingSolution && state.meetingSolution.point) pts.push(state.meetingSolution.point);
+      if (state.meetingSolution && state.meetingSolution.alternatePoint) pts.push(state.meetingSolution.alternatePoint);
+      for (const line of state.constructionLines) { const a=getNodeById(line.nodeA), b=getNodeById(line.nodeB); if (a) pts.push(a); if (b) pts.push(b); }
       const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y), zs = pts.map(p=>p.z);
       const min = { x:Math.min(...xs), y:Math.min(...ys), z:Math.min(...zs) };
       const max = { x:Math.max(...xs), y:Math.max(...ys), z:Math.max(...zs) };
@@ -859,12 +1111,13 @@
                 <option value="support" ${n.role==='support'?'selected':''}>support</option>
                 <option value="hook" ${n.role==='hook'?'selected':''}>hook</option>
                 <option value="attachment" ${n.role==='attachment'?'selected':''}>attachment</option>
+                <option value="meeting" ${n.role==='meeting'?'selected':''}>meeting</option>
               </select>
             </label>
             <div class="three">
-              <label>X <input id="prop-node-x" type="number" step="0.01" value="${n.x}" /></label>
-              <label>Y <input id="prop-node-y" type="number" step="0.01" value="${n.y}" /></label>
-              <label>Z <input id="prop-node-z" type="number" step="0.01" value="${n.z}" /></label>
+              <label>X <input id="prop-node-x" type="number" step="0.001" value="${n.x.toFixed(3)}" /></label>
+              <label>Y <input id="prop-node-y" type="number" step="0.001" value="${n.y.toFixed(3)}" /></label>
+              <label>Z <input id="prop-node-z" type="number" step="0.001" value="${n.z.toFixed(3)}" /></label>
             </div>
             <div class="section stack">
               <strong>Support reactions</strong>
@@ -912,11 +1165,15 @@
       if (state.selection.kind === 'member') {
         const m = getMemberById(state.selection.id);
         if (!m) return;
+        const aNode = getNodeById(m.nodeA), bNode = getNodeById(m.nodeB);
         const nodeOpts = state.nodes.map(n => `<option value="${n.id}" ${m.nodeA===n.id?'selected':''}>${n.id}</option>`).join('');
         const nodeOptsB = state.nodes.map(n => `<option value="${n.id}" ${m.nodeB===n.id?'selected':''}>${n.id}</option>`).join('');
+        const currentLen = aNode && bNode ? len(sub(bNode, aNode)) : 0;
+        const fmtNode = n => n ? `(${n.x.toFixed(3)}, ${n.y.toFixed(3)}, ${n.z.toFixed(3)}) m` : '-';
         el.props.innerHTML = `
           <div class="stack">
             <h3 style="margin:0;">Member ${m.id}</h3>
+            <div class="notice">Select a member to inspect where its ends meet. Units are metres, displayed and editable to 0.001 m (1 mm).</div>
             <label>Name <input id="prop-member-name" type="text" value="${m.name || ''}" /></label>
             <label>Type
               <select id="prop-member-type">
@@ -930,6 +1187,12 @@
               <label>Node B
                 <select id="prop-member-b">${nodeOptsB}</select>
               </label>
+            </div>
+            <div class="stack section">
+              <strong>End coordinates</strong>
+              <div class="kv"><span>Node A coordinates</span><strong>${fmtNode(aNode)}</strong></div>
+              <div class="kv"><span>Node B coordinates</span><strong>${fmtNode(bNode)}</strong></div>
+              <div class="kv"><span>Current member length</span><strong>${currentLen.toFixed(3)} m</strong></div>
             </div>
             <div class="two">
               <label>Member item
@@ -948,10 +1211,10 @@
               </label>
             </div>
             <div class="section stack">
-              <strong>Sketch aids</strong>
+              <strong>Sling / member length + sketch aids</strong>
               <div class="three">
-                <label>Fixed length (m)
-                  <input id="prop-member-length" type="number" step="0.01" value="${m.fixedLength ?? ''}" />
+                <label>Fixed / target length (m)
+                  <input id="prop-member-length" type="number" step="0.001" value="${m.fixedLength ?? ''}" />
                 </label>
                 <label>Orientation lock
                   <select id="prop-member-orient">
@@ -962,7 +1225,7 @@
                 </label>
                 <label class="checkline"><input id="prop-member-tension" type="checkbox" ${m.tensionOnly?'checked':''}/>Tension only</label>
               </div>
-              <div class="mini">Horizontal / vertical follow the active sketch plane, not a full global CAD solver.</div>
+              <div class="mini">1 unit = 1 metre. Fixed length can be entered directly with 1 mm precision.</div>
             </div>
             <div class="toolbar">
               <button id="prop-member-use-current">Use current length</button>
@@ -988,6 +1251,28 @@
           m.tensionOnly = document.getElementById('prop-member-tension').checked;
           rebuildTree(); renderProperties(); render(); runAnalysis();
           setStatus(`Member ${m.id} updated.`);
+        });
+        return;
+      }
+
+      if (state.selection.kind === 'constructionLine') {
+        const cl = getConstructionLineById(state.selection.id);
+        if (!cl) return;
+        el.props.innerHTML = `
+          <div class="stack">
+            <h3 style="margin:0;">Construction line ${cl.id}</h3>
+            <label>Name <input id="prop-cl-name" type="text" value="${cl.name || ''}" /></label>
+            <div class="two">
+              <label>Node A <input id="prop-cl-a" type="text" value="${cl.nodeA}" /></label>
+              <label>Node B <input id="prop-cl-b" type="text" value="${cl.nodeB}" /></label>
+            </div>
+            <button id="prop-cl-apply">Apply construction line changes</button>
+          </div>`;
+        document.getElementById('prop-cl-apply').addEventListener('click', () => {
+          cl.name = document.getElementById('prop-cl-name').value.trim() || cl.id;
+          cl.nodeA = document.getElementById('prop-cl-a').value.trim();
+          cl.nodeB = document.getElementById('prop-cl-b').value.trim();
+          rebuildTree(); renderProperties(); render();
         });
         return;
       }
@@ -1083,8 +1368,35 @@
         return;
       }
       const badgeCls = a.status === 'PASS' ? 'ok' : a.status === 'WARN' ? 'warn' : 'bad';
+      const selectedMember = state.selection && state.selection.kind==='member' ? getMemberById(state.selection.id) : null;
+      const selectedA = selectedMember ? getNodeById(selectedMember.nodeA) : null;
+      const selectedB = selectedMember ? getNodeById(selectedMember.nodeB) : null;
+      const selectedMemberCard = selectedMember && selectedA && selectedB ? `
+          <div class="result-card">
+            <strong>Selected member end coordinates</strong>
+            <div class="kv"><span>${selectedMember.nodeA}</span><strong>(${selectedA.x.toFixed(3)}, ${selectedA.y.toFixed(3)}, ${selectedA.z.toFixed(3)}) m</strong></div>
+            <div class="kv"><span>${selectedMember.nodeB}</span><strong>(${selectedB.x.toFixed(3)}, ${selectedB.y.toFixed(3)}, ${selectedB.z.toFixed(3)}) m</strong></div>
+            <div class="kv"><span>Current length</span><strong>${len(sub(selectedB, selectedA)).toFixed(3)} m</strong></div>
+          </div>` : '';
+      const meetingCard = state.meetingSolution ? `
+          <div class="result-card">
+            <div class="kv"><strong>Common end-point finder</strong><span class="badge ${state.meetingSolution.status === 'PASS' ? 'ok' : state.meetingSolution.status === 'WARN' ? 'warn' : 'bad'}">${state.meetingSolution.status}</span></div>
+            <div class="muted">${state.meetingSolution.message}</div>
+            ${state.meetingSolution.point ? `
+              <div class="kv"><span>X</span><strong>${state.meetingSolution.point.x.toFixed(3)} m</strong></div>
+              <div class="kv"><span>Y</span><strong>${state.meetingSolution.point.y.toFixed(3)} m</strong></div>
+              <div class="kv"><span>Z</span><strong>${state.meetingSolution.point.z.toFixed(3)} m</strong></div>
+              <div class="kv"><span>Common length</span><strong>${Number(state.meetingSolution.length).toFixed(3)} m</strong></div>
+              <div class="kv"><span>Max mismatch</span><strong>${state.meetingSolution.maxError.toFixed(4)} m</strong></div>
+              <div class="kv"><span>Residual</span><strong>${state.meetingSolution.residual.toFixed(4)} m</strong></div>
+              <div class="mini">Start nodes: ${state.meetingSolution.nodes.join(', ')}</div>
+            ` : '<div class="mini">No point returned.</div>'}
+            ${state.meetingSolution.notes && state.meetingSolution.notes.length ? `<ul class="result-list">${state.meetingSolution.notes.map(n => `<li>${n}</li>`).join('')}</ul>` : ''}
+          </div>` : '';
       el.results.innerHTML = `
         <div class="stack">
+          ${selectedMemberCard}
+          ${meetingCard}
           <div class="result-card">
             <div class="kv"><strong>${a.title}</strong><span class="badge ${badgeCls}">${a.status}</span></div>
             <div class="muted">${a.message}</div>
@@ -1332,6 +1644,74 @@
       renderResults();
     }
 
+    function loadExample(kind) {
+      clearDrawing();
+      if (kind === 'demo2leg') { loadDemo(); return; }
+      state.projectName = kind;
+      el.projectName.value = state.projectName;
+      if (kind === 'fourleg') {
+        state.nodes = [
+          { id:'N1', name:'Hook block', role:'hook', x:0, y:0, z:8, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N2', name:'Lug 1', role:'attachment', x:-2.5, y:-1.0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N3', name:'Lug 2', role:'attachment', x:2.5, y:-1.0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N4', name:'Lug 3', role:'attachment', x:2.5, y:1.0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:false?0:0} },
+          { id:'N5', name:'Lug 4', role:'attachment', x:-2.5, y:1.0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} }
+        ];
+        state.members = [ ['N1','N2'],['N1','N3'],['N1','N4'],['N1','N5'] ].map((pair,i)=>({ id:`M${i+1}`, name:`Leg ${i+1}`, type:'sling', nodeA:pair[0], nodeB:pair[1], itemId:'generic-roundsling-25t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-100t', endHardwareId:'generic-shackle-35t' }));
+        state.loadBoxes = [{ id:'L1', name:'4-point load', cx:0, cy:0, cz:0.6, sx:5.4, sy:2.4, sz:1.2, massT:80, attachments:['N2','N3','N4','N5'] }];
+      } else if (kind === 'spreader') {
+        state.nodes = [
+          { id:'N1', name:'Hook', role:'hook', x:0, y:0, z:9, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N2', name:'Beam left top', role:'attachment', x:-3, y:0, z:5.5, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N3', name:'Beam right top', role:'attachment', x:3, y:0, z:5.5, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N4', name:'Load left', role:'attachment', x:-3, y:0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N5', name:'Load right', role:'attachment', x:3, y:0, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} }
+        ];
+        state.members = [
+          { id:'M1', name:'Top left', type:'chain_leg', nodeA:'N1', nodeB:'N2', itemId:'generic-chain-leg-100t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-200t', endHardwareId:'generic-shackle-100t' },
+          { id:'M2', name:'Top right', type:'chain_leg', nodeA:'N1', nodeB:'N3', itemId:'generic-chain-leg-100t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-200t', endHardwareId:'generic-shackle-100t' },
+          { id:'M3', name:'Bottom left', type:'wire_rope_leg', nodeA:'N2', nodeB:'N4', itemId:'generic-wire-rope-75t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-shackle-100t', endHardwareId:'generic-shackle-75t' },
+          { id:'M4', name:'Bottom right', type:'wire_rope_leg', nodeA:'N3', nodeB:'N5', itemId:'generic-wire-rope-75t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-shackle-100t', endHardwareId:'generic-shackle-75t' }
+        ];
+        state.beams = [{ id:'B1', name:'Spreader beam', nodeA:'N2', nodeB:'N3', width:0.45, height:0.55, itemId:'generic-beam-200t', customWLL_kN:null }];
+        state.loadBoxes = [{ id:'L1', name:'Spreader load', cx:0, cy:0, cz:0.6, sx:6.2, sy:1.8, sz:1.2, massT:120, attachments:['N4','N5'] }];
+      } else if (kind === 'basket') {
+        state.nodes = [
+          { id:'N1', name:'Hook', role:'hook', x:0, y:0, z:7.5, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N2', name:'Basket left', role:'attachment', x:-2.8, y:0, z:1.8, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N3', name:'Basket right', role:'attachment', x:2.8, y:0, z:1.8, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} }
+        ];
+        state.members = [
+          { id:'M1', name:'Basket left leg', type:'sling', nodeA:'N1', nodeB:'N2', itemId:'generic-roundsling-35t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-75t', endHardwareId:'generic-shackle-35t' },
+          { id:'M2', name:'Basket right leg', type:'sling', nodeA:'N1', nodeB:'N3', itemId:'generic-roundsling-35t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-75t', endHardwareId:'generic-shackle-35t' }
+        ];
+        state.loadBoxes = [{ id:'L1', name:'Basketed load', cx:0, cy:0, cz:0.9, sx:5.8, sy:1.6, sz:1.8, massT:60, attachments:['N2','N3'] }];
+      } else if (kind === 'tailing') {
+        state.nodes = [
+          { id:'N1', name:'Main hook', role:'hook', x:0, y:0, z:10, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N2', name:'Tail hook', role:'hook', x:-6, y:0, z:4, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N3', name:'Top lug', role:'attachment', x:1.5, y:0, z:4.0, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N4', name:'Tail lug', role:'attachment', x:-4.0, y:0, z:0.8, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} }
+        ];
+        state.members = [
+          { id:'M1', name:'Main sling', type:'chain_leg', nodeA:'N1', nodeB:'N3', itemId:'generic-chain-leg-150t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-200t', endHardwareId:'generic-shackle-100t' },
+          { id:'M2', name:'Tail sling', type:'chain_leg', nodeA:'N2', nodeB:'N4', itemId:'generic-chain-leg-75t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-100t', endHardwareId:'generic-shackle-75t' }
+        ];
+        state.loadBoxes = [{ id:'L1', name:'Tailing body', cx:-1.2, cy:0, cz:1.7, sx:8.0, sy:1.8, sz:1.6, massT:100, attachments:['N3','N4'] }];
+      } else if (kind === 'threeleg') {
+        state.nodes = [
+          { id:'N1', name:'Hook', role:'hook', x:0, y:0, z:8.5, support:{x:true,y:true,z:true}, load:{x:0,y:0,z:0} },
+          { id:'N2', name:'Lug A', role:'attachment', x:-2.2, y:-1.3, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N3', name:'Lug B', role:'attachment', x:2.2, y:-1.3, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} },
+          { id:'N4', name:'Lug C', role:'attachment', x:0, y:1.6, z:1.2, support:{x:false,y:false,z:false}, load:{x:0,y:0,z:0} }
+        ];
+        state.members = [ ['N1','N2'],['N1','N3'],['N1','N4'] ].map((pair,i)=>({ id:`M${i+1}`, name:`Leg ${i+1}`, type:'chain_leg', nodeA:pair[0], nodeB:pair[1], itemId:'generic-chain-leg-50t', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'generic-master-link-100t', endHardwareId:'generic-shackle-50t' }));
+        state.loadBoxes = [{ id:'L1', name:'3-leg load', cx:0, cy:0, cz:0.6, sx:4.8, sy:3.2, sz:1.2, massT:70, attachments:['N2','N3','N4'] }];
+      }
+      state.selection = null; state.pendingStart = null; state.preview = null; state.meetingSolution = null;
+      rebuildTree(); renderProperties(); fitView(); render(); runAnalysis(); updateMeetingSummary('Example loaded.'); setStatus('Example loaded.');
+    }
+
     function loadDemo() {
       clearDrawing();
       state.projectName = 'Demo arbitrary sling lift';
@@ -1346,14 +1726,17 @@
         { id:'M2', name:'Right sling', type:'sling', nodeA:'N1', nodeB:'N3', itemId:'spanset-rs5000-2m', customWLL_kN:null, tensionOnly:true, fixedLength:null, orientationLock:'free', startHardwareId:'masterlink-17t', endHardwareId:'greenpin-g4163-6p5t' }
       ];
       state.beams = [
-        { id:'B1', name:'Representative beam', nodeA:'N2', nodeB:'N3', width:0.35, height:0.45, itemId:'beam-500kN', customWLL_kN:null }
+        { id:'B1', name:'Representative beam', nodeA:'N2', nodeB:'N3', width:0.35, height:0.45, itemId:'generic-beam-50t', customWLL_kN:null }
       ];
       state.loadBoxes = [
         { id:'L1', name:'Load', cx:0, cy:0, cz:0.65, sx:5.2, sy:1.6, sz:1.3, massT:50, attachments:['N2','N3'] }
       ];
       state.counters = { node:4, member:3, beam:2, loadBox:2, item: state.counters.item };
-      state.selection = null; state.pendingStart = null; state.preview = null;
+      state.selection = null; state.pendingStart = null; state.preview = null; state.meetingSolution = null;
       rebuildTree(); renderProperties(); fitView(); render(); runAnalysis();
+      el.meetingNodeIds.value = 'N2, N3';
+      el.meetingLength.value = '5.000';
+      updateMeetingSummary('Demo loaded. You can test the common end-point finder with N2, N3 and a common length.');
       setStatus('Demo sling lift loaded.');
     }
 
@@ -1368,6 +1751,7 @@
       state.snapMidpoints = el.snapMidpoints.checked;
       state.axisInference = el.axisInference.checked;
       state.defaultMemberType = el.defaultMemberType.value;
+      state.showSketchAnnotations = el.showSketchAnnotations ? el.showSketchAnnotations.checked : true;
       updateChips();
       render();
       runAnalysis();
@@ -1376,7 +1760,7 @@
     function updateLibrarySummary() {
       const counts = {};
       Object.values(state.library).forEach(item => counts[item.item_type] = (counts[item.item_type] || 0) + 1);
-      el.librarySummary.textContent = Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join(' · ');
+      el.librarySummary.textContent = 'Preset library: ' + Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join(' · ') + ' · Generic presets span 0.5 t to 1000 t; custom items can be entered from 0 kN upward.';
     }
 
     function addCustomItem() {
@@ -1390,6 +1774,320 @@
       updateLibrarySummary();
       renderProperties();
       setStatus(`Custom item ${id} added.`);
+    }
+
+    function updateConstructionLineSelect() {
+      if (!el.constructionLineSelect) return;
+      const current = el.constructionLineSelect.value;
+      let html = '<option value="">none</option>' + state.constructionLines.map(c => `<option value="${c.id}" ${c.id===current?'selected':''}>${c.id} · ${c.name||c.id}</option>`).join('');
+      el.constructionLineSelect.innerHTML = html;
+    }
+    function addConstructionLine(nodeA, nodeB) {
+      if (!getNodeById(nodeA) || !getNodeById(nodeB) || nodeA===nodeB) { setStatus('Construction line needs two valid different node IDs.'); return; }
+      const id = nextConstructionLineId();
+      state.constructionLines.push({ id, name:`Construction ${id}`, nodeA, nodeB });
+      rebuildTree(); render(); setStatus(`Construction line ${id} created.`);
+      return id;
+    }
+    function createGroupFromInput() {
+      const name = (el.groupName.value || '').trim() || `Group ${nextGroupId()}`;
+      const refs = (el.groupItemIds.value || '').split(',').map(inferEntityRef).filter(Boolean);
+      const id = nextGroupId();
+      state.groups.push({ id, name, items: refs });
+      rebuildTree(); setStatus(`Group ${name} created.`);
+    }
+    function addSelectedToGroup() {
+      const name = (el.groupName.value || '').trim();
+      if (!name || !state.selection) { setStatus('Set a group name and select an item first.'); return; }
+      let g = state.groups.find(g => g.name === name);
+      if (!g) { g = { id: nextGroupId(), name, items: [] }; state.groups.push(g); }
+      if (!g.items.some(ref => ref.kind===state.selection.kind && ref.id===state.selection.id)) g.items.push({kind:state.selection.kind,id:state.selection.id});
+      rebuildTree(); setStatus(`Added ${state.selection.kind} ${state.selection.id} to ${name}.`);
+    }
+    function exportStateObject() {
+      return {
+        version: 'phase2.3', projectName: state.projectName, loadMassFactorT: state.loadMassFactorT, dynamicFactor: state.dynamicFactor, consequenceFactor: state.consequenceFactor,
+        tool: state.tool, activePlane: state.activePlane, planeOffset: state.planeOffset, snap: state.snap, snapNodes: state.snapNodes, snapMidpoints: state.snapMidpoints, axisInference: state.axisInference,
+        defaultMemberType: state.defaultMemberType, showSketchAnnotations: state.showSketchAnnotations,
+        nodes: state.nodes, members: state.members, beams: state.beams, loadBoxes: state.loadBoxes, constructionLines: state.constructionLines, groups: state.groups,
+        library: state.library, counters: state.counters, meetingSolution: state.meetingSolution
+      };
+    }
+    function applyStateObject(data) {
+      state.projectName = data.projectName || state.projectName;
+      state.loadMassFactorT = Number(data.loadMassFactorT) || 0;
+      state.dynamicFactor = Number(data.dynamicFactor) || 1;
+      state.consequenceFactor = Number(data.consequenceFactor) || 1;
+      state.tool = data.tool || 'select';
+      state.activePlane = data.activePlane || 'XZ';
+      state.planeOffset = Number(data.planeOffset) || 0;
+      state.snap = Number(data.snap) || 0.25;
+      state.snapNodes = data.snapNodes !== false;
+      state.snapMidpoints = data.snapMidpoints !== false;
+      state.axisInference = data.axisInference !== false;
+      state.defaultMemberType = data.defaultMemberType || 'sling';
+      state.showSketchAnnotations = data.showSketchAnnotations !== false;
+      state.nodes = Array.isArray(data.nodes) ? data.nodes : [];
+      state.members = Array.isArray(data.members) ? data.members : [];
+      state.beams = Array.isArray(data.beams) ? data.beams : [];
+      state.loadBoxes = Array.isArray(data.loadBoxes) ? data.loadBoxes : [];
+      state.constructionLines = Array.isArray(data.constructionLines) ? data.constructionLines : [];
+      state.groups = Array.isArray(data.groups) ? data.groups : [];
+      state.library = data.library || state.library;
+      state.counters = data.counters || state.counters;
+      state.meetingSolution = data.meetingSolution || null;
+      el.projectName.value = state.projectName;
+      el.loadMassFactor.value = state.loadMassFactorT;
+      el.dyn.value = state.dynamicFactor;
+      el.cons.value = state.consequenceFactor;
+      el.planeOffset.value = state.planeOffset.toFixed(3);
+      el.gridSnap.value = Number(state.snap).toFixed(3);
+      el.snapNodes.checked = !!state.snapNodes;
+      el.snapMidpoints.checked = !!state.snapMidpoints;
+      el.axisInference.checked = !!state.axisInference;
+      el.defaultMemberType.value = state.defaultMemberType;
+      if (el.showSketchAnnotations) el.showSketchAnnotations.checked = !!state.showSketchAnnotations;
+      document.querySelectorAll('.plane-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.plane === state.activePlane));
+      document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tool === state.tool));
+      rebuildTree(); renderProperties(); updateLibrarySummary(); updateChips(); render(); runAnalysis();
+    }
+    function saveArrangement() {
+      const blob = new Blob([JSON.stringify(exportStateObject(), null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `${slugify(state.projectName||'rigging-arrangement')}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    function loadArrangementFromFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => { try { applyStateObject(JSON.parse(reader.result)); setStatus('Arrangement loaded.'); } catch(e){ setStatus('Failed to load JSON arrangement.'); console.error(e);} };
+      reader.readAsText(file);
+    }
+    function solve3x3(A, b) {
+      const M = A.map((row, i) => row.slice().concat([b[i]]));
+      for (let col = 0; col < 3; col++) {
+        let pivot = col;
+        for (let r = col + 1; r < 3; r++) if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+        if (Math.abs(M[pivot][col]) < 1e-12) return null;
+        if (pivot !== col) [M[col], M[pivot]] = [M[pivot], M[col]];
+        const div = M[col][col];
+        for (let j = col; j < 4; j++) M[col][j] /= div;
+        for (let r = 0; r < 3; r++) {
+          if (r === col) continue;
+          const factor = M[r][col];
+          for (let j = col; j < 4; j++) M[r][j] -= factor * M[col][j];
+        }
+      }
+      return [M[0][3], M[1][3], M[2][3]];
+    }
+
+    function planeSeedNormal(points) {
+      if (points.length < 3) return v(0,0,1);
+      const p0 = points[0];
+      for (let i = 1; i < points.length - 1; i++) {
+        for (let j = i + 1; j < points.length; j++) {
+          const n = cross(sub(points[i], p0), sub(points[j], p0));
+          if (len(n) > 1e-8) return norm(n);
+        }
+      }
+      return v(0,0,1);
+    }
+
+    function solveSphereMeeting(points, commonLength, seed) {
+      let x = { ...seed };
+      for (let iter = 0; iter < 80; iter++) {
+        let JTJ = [[0,0,0],[0,0,0],[0,0,0]];
+        let JTr = [0,0,0];
+        for (const p of points) {
+          let d = sub(x, p);
+          let Ld = len(d);
+          if (Ld < 1e-9) { d = v(0,0,1e-9); Ld = 1e-9; }
+          const j = [d.x / Ld, d.y / Ld, d.z / Ld];
+          const r = Ld - commonLength;
+          for (let a = 0; a < 3; a++) {
+            JTr[a] += j[a] * r;
+            for (let b = 0; b < 3; b++) JTJ[a][b] += j[a] * j[b];
+          }
+        }
+        const lambda = 1e-8;
+        for (let i = 0; i < 3; i++) JTJ[i][i] += lambda;
+        const dx = solve3x3(JTJ, JTr.map(v => -v));
+        if (!dx) break;
+        x.x += dx[0]; x.y += dx[1]; x.z += dx[2];
+        if (Math.sqrt(dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2]) < 1e-9) break;
+      }
+      const errors = points.map(p => Math.abs(len(sub(x, p)) - commonLength));
+      const residual = Math.sqrt(errors.reduce((s, e) => s + e*e, 0));
+      return { point: x, residual, maxError: Math.max(...errors), errors };
+    }
+
+    function solveCommonMeetingPoint(nodeIds, commonLengthM) {
+      const ids = [...new Set(nodeIds.map(id => id.trim()).filter(Boolean))];
+      const nodes = ids.map(getNodeById).filter(Boolean);
+      if (!(commonLengthM > 0)) {
+        return { status:'FAIL', message:'Common member length must be greater than 0.', point:null, nodes:ids, length:commonLengthM };
+      }
+      if (nodes.length === 2) {
+        const [n1,n2] = nodes;
+        const [ax1, ax2, locked] = planeAxes();
+        const c1 = {x:n1[ax1], y:n1[ax2]}, c2 = {x:n2[ax1], y:n2[ax2]};
+        const dx = c2.x-c1.x, dy = c2.y-c1.y; const d = Math.hypot(dx,dy);
+        if (d > 2*commonLengthM + 1e-9) return { status:'FAIL', message:'Two circles do not intersect on the active workplane for this length.', point:null, nodes:ids, length:commonLengthM };
+        if (d < 1e-9) return { status:'FAIL', message:'Two identical start nodes do not define unique workplane intersections.', point:null, nodes:ids, length:commonLengthM };
+        const mx = (c1.x+c2.x)/2, my = (c1.y+c2.y)/2; const h = Math.sqrt(Math.max(0, commonLengthM*commonLengthM - (d/2)*(d/2)));
+        const ux = -dy/d, uy = dx/d;
+        const sol1 = {x:mx + ux*h, y:my + uy*h};
+        const sol2 = {x:mx - ux*h, y:my - uy*h};
+        const p1 = {x:0,y:0,z:0}, p2 = {x:0,y:0,z:0}; p1[ax1]=sol1.x; p1[ax2]=sol1.y; p1[locked]=state.planeOffset; p2[ax1]=sol2.x; p2[ax2]=sol2.y; p2[locked]=state.planeOffset;
+        return {
+          status:'PASS',
+          message:'Two workplane solutions found for the supplied nodes and common length.',
+          point:{x:Number(p1.x.toFixed(3)), y:Number(p1.y.toFixed(3)), z:Number(p1.z.toFixed(3))},
+          alternatePoint:{x:Number(p2.x.toFixed(3)), y:Number(p2.y.toFixed(3)), z:Number(p2.z.toFixed(3))},
+          rawPoint:p1, residual:0, maxError:0, nodes:ids, length:commonLengthM,
+          notes:['Exactly two workplane intersections exist for two equal-length members on the active plane.']
+        };
+      }
+      if (nodes.length < 3) {
+        return { status:'WARN', message:'Use at least 3 valid start nodes for a specific 3D meeting point, or 2 nodes on the active plane for the two planar solutions.', point:null, nodes:ids, length:commonLengthM };
+      }
+      const pts = nodes.map(n => v(n.x, n.y, n.z));
+      const centroid = pts.reduce((s,p) => add(s,p), v(0,0,0));
+      centroid.x /= pts.length; centroid.y /= pts.length; centroid.z /= pts.length;
+      const normal = planeSeedNormal(pts);
+      const seeds = [centroid, add(centroid, mul(normal, commonLengthM)), add(centroid, mul(normal, -commonLengthM)), add(centroid, v(0,0,commonLengthM)), add(centroid, v(0,0,-commonLengthM))];
+      let best = null;
+      for (const seed of seeds) {
+        const trial = solveSphereMeeting(pts, commonLengthM, seed);
+        if (!best || trial.residual < best.residual) best = trial;
+      }
+      const planarSpread = Math.max(...pts.map(p => Math.abs(dot(sub(p, centroid), normal))));
+      let alt = null;
+      if (planarSpread <= 1e-6) {
+        const distToPlane = dot(sub(best.point, centroid), normal);
+        const refl = sub(best.point, mul(normal, 2*distToPlane));
+        if (len(sub(refl,best.point)) > 1e-6) alt = {x:Number(refl.x.toFixed(3)), y:Number(refl.y.toFixed(3)), z:Number(refl.z.toFixed(3))};
+      }
+      let status = best.maxError <= 0.001 ? 'PASS' : best.maxError <= 0.020 ? 'WARN' : 'FAIL';
+      const notes = [];
+      if (alt) notes.push('Coplanar start nodes produce two mirrored solutions; both are reported.');
+      if (best.maxError > 0.001) notes.push('No exact common point was found to 1 mm tolerance; the result is the best-fit point.');
+      return {
+        status,
+        message: status === 'PASS' ? 'Common meeting point found.' : status === 'WARN' ? 'Best-fit meeting point found with non-zero mismatch.' : 'No compatible common meeting point found for the supplied nodes and length.',
+        point:{x:Number(best.point.x.toFixed(3)), y:Number(best.point.y.toFixed(3)), z:Number(best.point.z.toFixed(3))},
+        alternatePoint: alt,
+        rawPoint: best.point, residual: best.residual, maxError: best.maxError, notes, nodes: ids, length: commonLengthM
+      };
+    }
+
+    function solveMeetingAlongConstructionLine(nodeIds, commonLengthM, lineId) {
+      const ids = [...new Set(nodeIds.map(id => id.trim()).filter(Boolean))];
+      const nodes = ids.map(getNodeById).filter(Boolean);
+      const line = getConstructionLineById(lineId);
+      if (!line) return { status:'FAIL', message:'Select a valid construction line first.', linePoint:null };
+      const a = getNodeById(line.nodeA), b = getNodeById(line.nodeB);
+      if (!a || !b) return { status:'FAIL', message:'Construction line endpoints are invalid.', linePoint:null };
+      if (nodes.length < 2) return { status:'FAIL', message:'Use at least two start nodes for construction-line solve.', linePoint:null };
+      const p0 = v(a.x,a.y,a.z), d = norm(sub(b,a));
+      const projections = nodes.map(n => dot(sub(v(n.x,n.y,n.z), p0), d));
+      let tMin = Math.min(...projections) - commonLengthM*2 - 5, tMax = Math.max(...projections) + commonLengthM*2 + 5;
+      const score = t => {
+        const p = add(p0, mul(d, t));
+        const errs = nodes.map(n => len(sub(p, v(n.x,n.y,n.z))) - commonLengthM);
+        return { p, sse: errs.reduce((s,e)=>s+e*e,0), max: Math.max(...errs.map(e=>Math.abs(e))) };
+      };
+      let best = null;
+      const steps = 1200;
+      for (let i=0;i<=steps;i++) {
+        const t = tMin + (tMax-tMin)*i/steps;
+        const sc = score(t); if (!best || sc.sse < best.sse) best = {t, ...sc};
+      }
+      for (let pass=0; pass<5; pass++) {
+        const span = (tMax-tMin)/20;
+        tMin = best.t - span; tMax = best.t + span;
+        for (let i=0;i<=200;i++) {
+          const t = tMin + (tMax-tMin)*i/200;
+          const sc = score(t); if (sc.sse < best.sse) best = {t, ...sc};
+        }
+      }
+      return {
+        status: best.max <= 0.001 ? 'PASS' : best.max <= 0.02 ? 'WARN' : 'FAIL',
+        message: best.max <= 0.001 ? 'Construction-line meeting point found.' : 'Closest construction-line point found.',
+        linePoint: {x:Number(best.p.x.toFixed(3)), y:Number(best.p.y.toFixed(3)), z:Number(best.p.z.toFixed(3))},
+        point: {x:Number(best.p.x.toFixed(3)), y:Number(best.p.y.toFixed(3)), z:Number(best.p.z.toFixed(3))},
+        residual: Math.sqrt(best.sse), maxError: best.max, nodes: ids, length: commonLengthM, lineId,
+        notes:['Point constrained to the selected construction line; result is exact only if max mismatch is within 1 mm.']
+      };
+    }
+
+    function updateMeetingSummary(msg) {
+      if (el.meetingSummary) el.meetingSummary.textContent = msg;
+    }
+
+    function fillMeetingFromAttachments() {
+      const ids = state.nodes.filter(n => n.role === 'attachment').map(n => n.id);
+      el.meetingNodeIds.value = ids.join(', ');
+      updateMeetingSummary(ids.length ? `Loaded ${ids.length} attachment node(s): ${ids.join(', ')}` : 'No attachment nodes found in the model.');
+    }
+
+    function fillMeetingFromSelectedLoadBox() {
+      if (!state.selection || state.selection.kind !== 'loadBox') {
+        updateMeetingSummary('Select a load box first, then use this helper to load its attachment nodes.');
+        return;
+      }
+      const lb = getLoadBoxById(state.selection.id);
+      if (!lb) return;
+      el.meetingNodeIds.value = (lb.attachments || []).join(', ');
+      updateMeetingSummary(lb.attachments && lb.attachments.length ? `Loaded attachments from ${lb.id}: ${(lb.attachments || []).join(', ')}` : `${lb.id} has no attachment nodes defined.`);
+    }
+
+    function runMeetingSolve() {
+      const ids = el.meetingNodeIds.value.split(',');
+      const commonLengthM = Number(el.meetingLength.value);
+      const result = solveCommonMeetingPoint(ids, commonLengthM);
+      state.meetingSolution = result;
+      if (result.point && el.meetingCreateNode.checked && result.status !== 'FAIL') {
+        const existing = state.nodes.find(n => n.role === 'meeting' && n.name === 'Common point');
+        if (existing) {
+          existing.x = result.point.x; existing.y = result.point.y; existing.z = result.point.z;
+          existing.role = 'meeting';
+          state.meetingSolution.createdNodeId = existing.id;
+          selectItem('node', existing.id);
+        } else {
+          const created = addNode(result.point);
+          created.name = 'Common point';
+          created.role = 'meeting';
+          state.meetingSolution.createdNodeId = created.id;
+          selectItem('node', created.id);
+        }
+      }
+      rebuildTree(); renderProperties(); render(); runAnalysis();
+      if (result.point) {
+        updateMeetingSummary(`${result.message} (${result.point.x.toFixed(3)}, ${result.point.y.toFixed(3)}, ${result.point.z.toFixed(3)}) m · max mismatch ${result.maxError.toFixed(4)} m`);
+        setStatus(`${result.message} Max mismatch = ${result.maxError.toFixed(4)} m.`);
+      } else {
+        updateMeetingSummary(result.message);
+        setStatus(result.message);
+      }
+    }
+
+    function runLineMeetingSolve() {
+      const ids = el.meetingNodeIds.value.split(',');
+      const commonLengthM = Number(el.meetingLength.value);
+      const lineId = el.constructionLineSelect.value;
+      const result = solveMeetingAlongConstructionLine(ids, commonLengthM, lineId);
+      state.meetingSolution = result;
+      if (result.point && el.meetingCreateNode.checked && result.status !== 'FAIL') {
+        const created = addNode(result.point);
+        created.name = 'Line common point';
+        created.role = 'meeting';
+        state.meetingSolution.createdNodeId = created.id;
+        selectItem('node', created.id);
+      }
+      rebuildTree(); renderProperties(); render(); runAnalysis();
+      updateMeetingSummary(result.point ? `${result.message} (${result.point.x.toFixed(3)}, ${result.point.y.toFixed(3)}, ${result.point.z.toFixed(3)}) m · max mismatch ${result.maxError.toFixed(4)} m` : result.message);
+      setStatus(result.message);
     }
 
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -1504,7 +2202,18 @@
     document.getElementById('btn-load-demo').addEventListener('click', loadDemo);
     document.getElementById('btn-constraints').addEventListener('click', applyAllConstraints);
     document.getElementById('btn-add-item').addEventListener('click', addCustomItem);
-    [el.projectName, el.loadMassFactor, el.dyn, el.cons, el.planeOffset, el.gridSnap, el.snapNodes, el.snapMidpoints, el.axisInference, el.defaultMemberType].forEach(inp => inp.addEventListener('change', applyProjectInputs));
+    document.getElementById('btn-meeting-attachments').addEventListener('click', fillMeetingFromAttachments);
+    document.getElementById('btn-meeting-loadbox').addEventListener('click', fillMeetingFromSelectedLoadBox);
+    document.getElementById('btn-solve-meeting').addEventListener('click', runMeetingSolve);
+    [el.projectName, el.loadMassFactor, el.dyn, el.cons, el.planeOffset, el.gridSnap, el.snapNodes, el.snapMidpoints, el.axisInference, el.defaultMemberType, el.showSketchAnnotations].forEach(inp => inp && inp.addEventListener('change', applyProjectInputs));
+    document.getElementById('btn-load-example').addEventListener('click', () => loadExample(el.exampleSelect.value));
+    document.getElementById('btn-save-json').addEventListener('click', saveArrangement);
+    document.getElementById('btn-load-json').addEventListener('click', () => el.loadJsonFile.click());
+    el.loadJsonFile.addEventListener('change', ev => { const f = ev.target.files && ev.target.files[0]; if (f) loadArrangementFromFile(f); ev.target.value=''; });
+    document.getElementById('btn-create-group').addEventListener('click', createGroupFromInput);
+    document.getElementById('btn-add-selected-group').addEventListener('click', addSelectedToGroup);
+    document.getElementById('btn-create-construction').addEventListener('click', () => addConstructionLine(el.constructionNodeA.value.trim(), el.constructionNodeB.value.trim()));
+    document.getElementById('btn-solve-line-meeting').addEventListener('click', runLineMeetingSolve);
 
     el.tabProps.addEventListener('click', () => {
       el.tabProps.classList.add('active'); el.tabResults.classList.remove('active');
@@ -1536,6 +2245,61 @@
     });
     el.viewport.appendChild(wrap);
 
+    function initSplitters() {
+      const root = document.documentElement;
+      const sidebarSplitter = document.getElementById('splitter-sidebar');
+      const dockSplitter = document.getElementById('splitter-dock');
+      const rightSplitter = document.getElementById('splitter-right');
+      let drag = null;
+
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+      const startDrag = (type, ev) => {
+        ev.preventDefault();
+        drag = {
+          type,
+          startX: ev.clientX,
+          startY: ev.clientY,
+          startW: parseFloat(getComputedStyle(root).getPropertyValue('--sidebarW')) || 300,
+          startH: parseFloat(getComputedStyle(root).getPropertyValue('--dockH')) || 340,
+          startRW: parseFloat(getComputedStyle(root).getPropertyValue('--rightbarW')) || 360
+        };
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = type === 'dock' ? 'row-resize' : 'col-resize';
+        ({sidebar:sidebarSplitter, dock:dockSplitter, right:rightSplitter}[type]).classList.add('dragging');
+      };
+
+      sidebarSplitter.addEventListener('pointerdown', ev => startDrag('sidebar', ev));
+      dockSplitter.addEventListener('pointerdown', ev => startDrag('dock', ev));
+      rightSplitter.addEventListener('pointerdown', ev => startDrag('right', ev));
+
+      window.addEventListener('pointermove', ev => {
+        if (!drag) return;
+        if (drag.type === 'sidebar') {
+          const newW = clamp(drag.startW + (ev.clientX - drag.startX), 240, 520);
+          root.style.setProperty('--sidebarW', `${newW}px`);
+        } else if (drag.type === 'right') {
+          const newRW = clamp(drag.startRW - (ev.clientX - drag.startX), 280, 620);
+          root.style.setProperty('--rightbarW', `${newRW}px`);
+        } else {
+          const maxDock = Math.max(220, window.innerHeight - 220);
+          const newH = clamp(drag.startH - (ev.clientY - drag.startY), 220, maxDock);
+          root.style.setProperty('--dockH', `${newH}px`);
+        }
+      });
+
+      window.addEventListener('pointerup', () => {
+        if (!drag) return;
+        sidebarSplitter.classList.remove('dragging'); dockSplitter.classList.remove('dragging'); rightSplitter.classList.remove('dragging');
+        document.body.style.userSelect = ''; document.body.style.cursor = ''; drag = null;
+      });
+
+      sidebarSplitter.addEventListener('dblclick', () => root.style.setProperty('--sidebarW', '300px'));
+      dockSplitter.addEventListener('dblclick', () => root.style.setProperty('--dockH', '340px'));
+      rightSplitter.addEventListener('dblclick', () => root.style.setProperty('--rightbarW', '360px'));
+    }
+
+    initSplitters();
     window.addEventListener('resize', resize);
 
     updateChips();
